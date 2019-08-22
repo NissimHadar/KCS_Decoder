@@ -16,9 +16,13 @@ namespace KCS_decoder
         // Container for wave file data
         private byte[] wav;
 
-        public bool readWaveFile(string filename)
+        public bool readWaveFileFirst20Minutes(string filename)
         {
-            wav = File.ReadAllBytes(filename);
+            // Assume a 48Kb sample rate
+            int numBytes = 48000 * 2 * 20 * 60;
+            wav = new byte[numBytes];
+            FileStream fs = new FileStream(filename, FileMode.Open);
+            fs.Read(wav, 0, numBytes);
 
             // Check if file is RIFF (Resource container
             string chunkID = Encoding.UTF8.GetString(wav, 0, 4);

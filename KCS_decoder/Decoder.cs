@@ -32,6 +32,9 @@ namespace KCS_decoder
         private char INVALID_CHAR = '\0';
 
         private int currentOffset = 0; // A pointer into the samples
+        private string message;
+        private double startTime;
+
         public Decoder(int sampleRate, int numChannels, float[][] samples)
         {
             this.sampleRate = sampleRate;
@@ -41,10 +44,14 @@ namespace KCS_decoder
             goertzel = new Goertzel();
         }
 
-        internal string getMessage()
+        internal bool analyzeFile()
         {
-            findEndOfHeader();
-            string message = "";
+            if (!findEndOfHeader())
+            {
+                return false;
+            }
+
+            message = "";
             char nextChar = getNextChar();
             while (nextChar != INVALID_CHAR)
             {
@@ -52,7 +59,7 @@ namespace KCS_decoder
                 nextChar = getNextChar();
             }
 
-            return message;
+            return true;
         }
 
         private char getNextChar()
@@ -107,13 +114,20 @@ namespace KCS_decoder
 
         // Returns the sample that the header starts at.
         // Will return -1 if the header is too short
-        private void findEndOfHeader()
+        private bool findEndOfHeader()
         {
             // Find first bit
-            while (detectBit() == -1)
+            int result = detectBit();
+            while (result == -1)
             {
+                result = detectBit();
             }
 
+            if (result == -2)
+            {
+                // No header found
+                return false;
+            }
             // Find first start bit
             while (detectBit() == 1)
             {
@@ -121,12 +135,15 @@ namespace KCS_decoder
 
             // Go back 1 bit
             currentOffset -= (int)(0.080 * sampleRate);
-            return;
+            startTime = (double)currentOffset / sampleRate;
+
+            return true;
         }
 
         // Returns the value of the bit at the current offset
         // A bit is detected when at least 60 ms of all '1's or all '0's have been detected
         // -1 is returned if no bit is found
+        // -2 is returned if no more data
         int detectBit()
         {
             int num_0 = 0;
@@ -135,7 +152,12 @@ namespace KCS_decoder
             int increment   = (int)(0.010 * sampleRate);
             int windowWidth = (int)(0.060 * sampleRate);
 
-            for (int i = 0; i < 8 && currentOffset < samples[0].Length; ++i, currentOffset += increment)
+            if (currentOffset >= samples[0].Length - windowWidth)
+            {
+                return -2;
+            }
+
+            for (int i = 0; i < 8 && currentOffset < samples[0].Length - windowWidth; ++i, currentOffset += increment)
             {
                 double t = (double)currentOffset / sampleRate;
                 if (goertzel.Analyze(sampleRate, samples[0], currentOffset, windowWidth, 2300, 2500))
@@ -160,6 +182,38 @@ namespace KCS_decoder
             {
                 return -1;
             }
+        }
+
+        internal string getSession()
+        {
+            string[] tokens = message.Split('@');
+            if (tokens.Length == 2)
+            {
+                return tokens[0];
+            }
+            else
+            {
+                return "Session not found in message: " + message;
+            }
+        }
+
+        internal string getDateTime()
+        {
+            string[] tokens = message.Split('@');
+            if (tokens.Length == 2)
+            {
+                // Remove new line from end
+                return tokens[1].Split('\n')[0];
+            }
+            else
+            {
+                return "Date and time not found in message: " + message;
+            }
+        }
+
+        internal double getStartTime()
+        {
+            return startTime;
         }
     }
 }
